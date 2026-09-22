@@ -209,12 +209,12 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
   const results = data?.results ?? [];
   const misspelled = data ? !data.correct : false;
   const showingHistory = !query.trim() && history.length > 0;
-  const staleHelper = Boolean(dictLoadError || (data && data.engine !== "sounds-1"));
+  // Only hard-block on a proven stale lookup engine. Dictionary list failures are soft.
+  const staleHelper = Boolean(data && data.engine !== "sounds-1");
   const staleReason =
-    dictLoadError ??
-    (data && data.engine !== "sounds-1"
+    data && data.engine !== "sounds-1"
       ? "Lookup helper is missing engine “sounds-1” — assets/dictd is outdated."
-      : null);
+      : null;
 
   const remember = useCallback((word: string) => {
     void pushHistory(word).then(setHistory);
@@ -230,7 +230,10 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
       searchBarPlaceholder="Type a word to define"
       searchBarAccessory={
         <List.Dropdown tooltip="Dictionary" value={dictionary} onChange={onDictionaryChange}>
-          <List.Dropdown.Item title="All Dictionaries" value="" />
+          <List.Dropdown.Item
+            title={dictLoadError ? "All Dictionaries (sources unavailable)" : "All Dictionaries"}
+            value=""
+          />
           {dictionaries.map((d) => (
             <List.Dropdown.Item key={d.name} title={d.name} value={d.name} />
           ))}

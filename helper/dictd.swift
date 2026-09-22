@@ -11,13 +11,13 @@ import CoreServices
 
 typealias DictRef = OpaquePointer
 
-/// Returns a CFSet of DCSDictionary refs on modern macOS (not a CFArray).
+// These private APIs return CFSet on modern macOS (not CFArray). Import as raw
+// pointers and bridge via NSSet — never CFArrayGetValueAtIndex.
 @_silgen_name("DCSCopyAvailableDictionaries")
-func DCSCopyAvailableDictionaries() -> Unmanaged<CFTypeRef>?
+func DCSCopyAvailableDictionaries() -> UnsafeMutableRawPointer?
 
-/// Active (enabled) dictionaries — CFArray when available.
 @_silgen_name("DCSGetActiveDictionaries")
-func DCSGetActiveDictionaries() -> Unmanaged<CFTypeRef>?
+func DCSGetActiveDictionaries() -> UnsafeMutableRawPointer?
 
 @_silgen_name("DCSDictionaryGetName")
 func DCSDictionaryGetName(_ dictionary: DictRef) -> Unmanaged<CFString>?
@@ -31,7 +31,7 @@ func DCSCopyRecordsForSearchString(
     _ string: CFString,
     _ a: UnsafeRawPointer?,
     _ b: UnsafeRawPointer?
-) -> Unmanaged<CFArray>?
+) -> UnsafeMutableRawPointer?
 
 @_silgen_name("DCSRecordGetHeadword")
 func DCSRecordGetHeadword(_ record: CFTypeRef) -> Unmanaged<CFString>?
@@ -67,58 +67,56 @@ struct ActiveDict {
     let shortName: String
 }
 
-/// DictionaryServices returns a CFSet on modern macOS (crash if treated as CFArray).
-/// Always bridge through NSSet/NSArray — never call CFArrayGetValueAtIndex here.
-func dictionaryRefs(from collection: CFTypeRef) -> [DictRef] {
-    let obj = unsafeBitCast(collection, to: AnyObject.self)
-
+/// Turn a CFSet/CFArray pointer into object refs without using objectAtIndex: on a set.
+func cfCollectionObjects(_ ptr: UnsafeMutableRawPointer, consumed: Bool) -> [AnyObject] {
+    let unmanaged = Unmanaged<CFTypeRef>.fromOpaque(ptr)
+    let cf = consumed ? unmanaged.takeRetainedValue() : unmanaged.takeUnretainedValue()
+    let obj = cf as AnyObject
     if let set = obj as? NSSet {
-        return set.allObjects.map { item in
-            DictRef(Unmanaged.passUnretained(item as AnyObject).toOpaque())
-        }
+        return set.allObjects.map { $0 as AnyObject }
     }
     if let arr = obj as? NSArray {
-        return arr.map { item in
-            DictRef(Unmanaged.passUnretained(item as AnyObject).toOpaque())
-        }
+        return arr.map { $0 as AnyObject }
     }
-
-    // Non-ObjC CFSet fallback (no array indexing).
-    if CFGetTypeID(collection) == CFSetGetTypeID() {
-        let set = unsafeBitCast(collection, to: CFSet.self)
+    // CFSet without ObjC isa (rare): copy values by CFSetGetValues only.
+    if CFGetTypeID(cf) == CFSetGetTypeID() {
+        let set = cf as! CFSet
         let count = CFSetGetCount(set)
         var values = [UnsafeRawPointer?](repeating: nil, count: count)
         CFSetGetValues(set, &values)
-        return values.compactMap { ptr in ptr.map { DictRef($0) } }
+        return values.compactMap { p -> AnyObject? in
+            guard let p else { return nil }
+            return Unmanaged<AnyObject>.fromOpaque(p).takeUnretainedValue()
+        }
     }
     return []
 }
 
-func activeDict(from ref: DictRef) -> ActiveDict? {
+func activeDict(from object: AnyObject) -> ActiveDict? {
+    let ref = DictRef(Unmanaged.passUnretained(object).toOpaque())
     let name = DCSDictionaryGetName(ref)?.takeUnretainedValue() as String? ?? ""
     guard !name.isEmpty else { return nil }
     let short = DCSDictionaryGetShortName(ref)?.takeUnretainedValue() as String? ?? name
     return ActiveDict(ref: ref, name: name, shortName: short)
 }
 
-func collectDictionaries(using getter: () -> Unmanaged<CFTypeRef>?, retained: Bool) -> [ActiveDict] {
-    guard let unmanaged = getter() else { return [] }
-    let collection = retained ? unmanaged.takeRetainedValue() : unmanaged.takeUnretainedValue()
+func availableDictionaries() -> [ActiveDict] {
     var seen = Set<String>()
     var out: [ActiveDict] = []
-    for ref in dictionaryRefs(from: collection) {
-        guard let dict = activeDict(from: ref), !seen.contains(dict.name) else { continue }
-        seen.insert(dict.name)
-        out.append(dict)
-    }
-    return out
-}
 
-func availableDictionaries() -> [ActiveDict] {
-    // DCSCopyAvailableDictionaries returns a CFSet on modern macOS — handle that first.
-    var out = collectDictionaries(using: DCSCopyAvailableDictionaries, retained: true)
+    func absorb(_ ptr: UnsafeMutableRawPointer?, consumed: Bool) {
+        guard let ptr else { return }
+        for object in cfCollectionObjects(ptr, consumed: consumed) {
+            guard let dict = activeDict(from: object), !seen.contains(dict.name) else { continue }
+            seen.insert(dict.name)
+            out.append(dict)
+        }
+    }
+
+    // Copy-rule API first (returns CFSet today). Active list is borrowed.
+    absorb(DCSCopyAvailableDictionaries(), consumed: true)
     if out.isEmpty {
-        out = collectDictionaries(using: DCSGetActiveDictionaries, retained: false)
+        absorb(DCSGetActiveDictionaries(), consumed: false)
     }
     out.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     return out
@@ -143,39 +141,31 @@ func define(_ word: String, dict: ActiveDict? = nil) -> String? {
     return def.takeRetainedValue() as String
 }
 
+func htmlForWord(_ word: String, dict: ActiveDict) -> (html: String, source: String)? {
+    guard let recordsPtr = DCSCopyRecordsForSearchString(dict.ref, word as CFString, nil, nil) else {
+        return nil
+    }
+    for object in cfCollectionObjects(recordsPtr, consumed: true) {
+        let record = object as CFTypeRef
+        let head = DCSRecordGetHeadword(record)?.takeUnretainedValue() as String?
+        let headOK = head == nil
+            || head!.compare(word, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        guard headOK else { continue }
+        if let htmlRef = DCSRecordCopyData(record, kRecordHTML) {
+            return (htmlRef.takeRetainedValue() as String, dict.name)
+        }
+    }
+    return nil
+}
+
 func richEntry(for word: String, dict: ActiveDict?) -> Entry {
     let plain = define(word, dict: dict)
-    var html: String?
-    var source = dict?.name
-
-    // Prefer HTML from a concrete dictionary's records (nicer formatting in the UI).
-    let targets: [ActiveDict]
-    if let dict {
-        targets = [dict]
-    } else {
-        targets = availableDictionaries()
+    // Only fetch HTML when a concrete dictionary is selected. Enumerating all
+    // dictionaries here used to crash lookup whenever availableDictionaries failed.
+    if let dict, let rich = htmlForWord(word, dict: dict) {
+        return Entry(word: word, definition: plain, html: rich.html, source: rich.source)
     }
-    for d in targets {
-        guard let recordsRef = DCSCopyRecordsForSearchString(d.ref, word as CFString, nil, nil) else { continue }
-        let records = recordsRef.takeRetainedValue()
-        let count = CFArrayGetCount(records)
-        for i in 0..<count {
-            guard let ptr = CFArrayGetValueAtIndex(records, i) else { continue }
-            let record = unsafeBitCast(ptr, to: CFTypeRef.self)
-            let head = DCSRecordGetHeadword(record)?.takeUnretainedValue() as String?
-            let headOK = head == nil
-                || head!.compare(word, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
-            guard headOK else { continue }
-            if let htmlRef = DCSRecordCopyData(record, kRecordHTML) {
-                html = htmlRef.takeRetainedValue() as String
-                source = d.name
-                break
-            }
-        }
-        if html != nil { break }
-    }
-
-    return Entry(word: word, definition: plain, html: html, source: source)
+    return Entry(word: word, definition: plain, html: nil, source: dict?.name)
 }
 
 // DCSCopyTextDefinition is prefix-fuzzy: "uninstal" returns the "uninstall" entry.
