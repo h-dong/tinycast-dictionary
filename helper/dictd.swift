@@ -225,6 +225,16 @@ func isExactHeadword(_ word: String, definition: String) -> Bool {
     return head.compare(word, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
 }
 
+/// Skip combining forms ("-phone", "pre-") and other non-lookup headwords.
+@Sendable
+func isLookupWorthy(_ w: String) -> Bool {
+    let t = w.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !t.isEmpty, t.contains(where: \.isLetter) else { return false }
+    if t.hasPrefix("-") || t.hasSuffix("-") { return false }
+    if t.contains(" ") && t.split(separator: " ").count > 4 { return false }
+    return true
+}
+
 // MARK: - Fuzzy / phonetic
 
 /// Banded Damerau–Levenshtein (optimal string alignment).
@@ -624,15 +634,6 @@ struct Candidate {
 var candidates: [Candidate] = []
 var seen = Set<String>()
 let querySound = metaphone(queryLower)
-
-/// Skip combining forms ("-phone", "pre-") and other non-lookup headwords.
-func isLookupWorthy(_ w: String) -> Bool {
-    let t = w.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !t.isEmpty, t.contains(where: \.isLetter) else { return false }
-    if t.hasPrefix("-") || t.hasSuffix("-") { return false }
-    if t.contains(" ") && t.split(separator: " ").count > 4 { return false }
-    return true
-}
 
 func add(_ w: String, distance: Int) {
     // Combining forms like "-phone" → also consider bare "phone".
