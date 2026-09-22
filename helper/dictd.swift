@@ -100,6 +100,44 @@ func activeDict(from object: AnyObject) -> ActiveDict? {
     return ActiveDict(ref: ref, name: name, shortName: short)
 }
 
+/// Keep English, EU-language, and Chinese dictionaries; drop Japanese/Korean/Arabic/etc.
+func isAllowedDictionaryName(_ name: String) -> Bool {
+    let n = name.lowercased()
+    let deny = [
+        "japan", "日本", "大辞林", "ウィズダム", "知恵袋",
+        "korean", "한국", "한영", "영한", "국어",
+        "arabic", "عربي", "عرب",
+        "hindi", "हिन्द", "हिंदी",
+        "thai", "พจน",
+        "turkish", "türk", "turkce", "türkçe",
+        "russian", "русск", "толковый",
+        "hebrew", "עבר",
+        "vietnamese", "indonesian", "malay", "kazakh", "hindi",
+        "sanseido", "daijirin",
+    ]
+    if deny.contains(where: { n.contains($0) }) { return false }
+
+    let allow = [
+        // English
+        "english", "oxford american", "apple dictionary", "wikipedia", "thesaurus", "writer's thesaurus", "writers thesaurus",
+        // Chinese
+        "chinese", "汉", "漢", "粤", "cantonese", "oxford chinese",
+        // EU languages + common titles
+        "german", "deutsch", "duden",
+        "french", "français", "francais", "hachette", "québec", "quebec",
+        "spanish", "español", "espanol", "vox",
+        "italian", "italiano", "paravia",
+        "dutch", "nederlands", "prisma",
+        "portuguese", "português", "portugues",
+        "swedish", "svensk", "norwegian", "norsk", "danish", "dansk", "finnish", "suomi",
+        "polish", "polski", "czech", "slovak", "hungarian", "magyar",
+        "greek", "ελλην", "irish", "gaeilge", "welsh", "cymraeg",
+        "catalan", "romanian", "bulgarian", "croatian", "slovenian",
+        "estonian", "latvian", "lithuanian", "maltese", "basque", "galician",
+    ]
+    return allow.contains(where: { n.contains($0) })
+}
+
 func availableDictionaries() -> [ActiveDict] {
     var seen = Set<String>()
     var out: [ActiveDict] = []
@@ -107,13 +145,14 @@ func availableDictionaries() -> [ActiveDict] {
     func absorb(_ ptr: UnsafeMutableRawPointer?, consumed: Bool) {
         guard let ptr else { return }
         for object in cfCollectionObjects(ptr, consumed: consumed) {
-            guard let dict = activeDict(from: object), !seen.contains(dict.name) else { continue }
+            guard let dict = activeDict(from: object),
+                  isAllowedDictionaryName(dict.name),
+                  !seen.contains(dict.name) else { continue }
             seen.insert(dict.name)
             out.append(dict)
         }
     }
 
-    // Copy-rule API first (returns CFSet today). Active list is borrowed.
     absorb(DCSCopyAvailableDictionaries(), consumed: true)
     if out.isEmpty {
         absorb(DCSGetActiveDictionaries(), consumed: false)
@@ -586,7 +625,23 @@ var candidates: [Candidate] = []
 var seen = Set<String>()
 let querySound = metaphone(queryLower)
 
+/// Skip combining forms ("-phone", "pre-") and other non-lookup headwords.
+func isLookupWorthy(_ w: String) -> Bool {
+    let t = w.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !t.isEmpty, t.contains(where: \.isLetter) else { return false }
+    if t.hasPrefix("-") || t.hasSuffix("-") { return false }
+    if t.contains(" ") && t.split(separator: " ").count > 4 { return false }
+    return true
+}
+
 func add(_ w: String, distance: Int) {
+    // Combining forms like "-phone" → also consider bare "phone".
+    let trimmedHyphen = w.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    if trimmedHyphen != w, isLookupWorthy(trimmedHyphen) {
+        add(trimmedHyphen, distance: distance)
+    }
+    guard isLookupWorthy(w) else { return }
+
     let key = w.lowercased()
     let sound = !querySound.isEmpty && metaphone(key) == querySound
     let ranked = (sound && distance > 0) ? max(1, distance - 1) : distance
