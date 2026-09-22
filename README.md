@@ -49,7 +49,7 @@ Shown when the matching Dictionary.app source is installed, including:
 | Estonian, Latvian, Lithuanian, Maltese, Basque, Galician | When installed |
 
 Exact titles vary by macOS version and which packs you enabled under
-**Dictionary → Settings → Dictionaries**. List what this Mac will show:
+**Dictionary → Settings → Dictionaries**. List what this Mac will show (after building):
 
 ```sh
 ./assets/dictd dictionaries
@@ -62,7 +62,17 @@ Exact titles vary by macOS version and which packs you enabled under
   `dictd define [--dictionary <name>] <word>` (JSON on stdout).
 - `assets/dictd` — compiled helper (shipped inside the extension; `assets/` is copied by Tinycast).
 - `src/define.tsx` — Define Word command.
-- `build/` — output of `npm run build`. This is the folder to give Tinycast.
+- `build/` — output of `npm run build`. Folder to install from when developing locally.
+
+## Install in Tinycast
+
+1. Download `tinycast-dictionary-vX.Y.Z.zip` from the
+   [latest release](https://github.com/h-dong/tinycast-dictionary/releases/latest).
+2. Unzip it.
+3. Settings → Extensions → enable extensions → Install → **Add from folder** → pick the
+   unzipped `tinycast-dictionary/` folder.
+
+Re-install from a newer release zip when you update.
 
 ## Build
 
@@ -83,7 +93,7 @@ npm run build:helper
 # or: swiftc -O -o assets/dictd helper/dictd.swift
 ```
 
-Sanity check **before** installing:
+Sanity check:
 
 ```sh
 ./assets/dictd version          # → sounds-1
@@ -91,14 +101,14 @@ Sanity check **before** installing:
 ./assets/dictd lookup fone      # should suggest phone
 ```
 
-## Install in Tinycast
+To sideload a local build: Install → **Add from folder** → pick `build/`. Re-add that folder
+after every rebuild so Tinycast picks up the new `assets/dictd`.
 
-1. Build on this Mac (`npm run build`) so `build/` contains a fresh `assets/dictd`.
-2. Tinycast → **Settings → Extensions** → enable extensions if needed → **Install** →
-   **Add from folder** → choose the repo’s `build/` directory.
-3. After every rebuild, install again from `build/` (Tinycast copies the folder; it will not
-   pick up a new `assets/dictd` until you re-add it).
+## Release
 
-Installed copy lives under something like:
+Push a version tag to publish a prebuilt zip via GitHub Actions:
 
-`~/Library/Application Support/com.tinycast.app/extensions/dictionary/`
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
