@@ -136,6 +136,7 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
   const [query, setQuery] = useState(props.arguments?.word ?? "");
   const [dictionary, setDictionary] = useState("");
   const [dictionaries, setDictionaries] = useState<DictInfo[]>([]);
+  const [dictLoadError, setDictLoadError] = useState<string | null>(null);
   const [data, setData] = useState<Lookup | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -144,15 +145,27 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [dicts, hist, savedDict] = await Promise.all([
-        listDictionaries().catch(() => [] as DictInfo[]),
+      const [dictsResult, hist, savedDict] = await Promise.all([
+        listDictionaries()
+          .then((dicts) => ({ dicts, error: null as string | null }))
+          .catch((e: unknown) => ({
+            dicts: [] as DictInfo[],
+            error: e instanceof Error ? e.message : String(e),
+          })),
         loadHistory(),
         LocalStorage.getItem<string>(DICT_PREF_KEY),
       ]);
       if (cancelled) return;
-      setDictionaries(dicts);
+      setDictionaries(dictsResult.dicts);
+      setDictLoadError(
+        dictsResult.error
+          ? dictsResult.error
+          : dictsResult.dicts.length === 0
+            ? "dictd dictionaries returned no sources — rebuild assets/dictd"
+            : null,
+      );
       setHistory(hist);
-      if (savedDict && (savedDict === "" || dicts.some((d) => d.name === savedDict))) {
+      if (savedDict && (savedDict === "" || dictsResult.dicts.some((d) => d.name === savedDict))) {
         setDictionary(savedDict);
       }
     })();
@@ -196,7 +209,12 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
   const results = data?.results ?? [];
   const misspelled = data ? !data.correct : false;
   const showingHistory = !query.trim() && history.length > 0;
-  const staleHelper = Boolean(data && data.engine !== "sounds-1");
+  const staleHelper = Boolean(dictLoadError || (data && data.engine !== "sounds-1"));
+  const staleReason =
+    dictLoadError ??
+    (data && data.engine !== "sounds-1"
+      ? "Lookup helper is missing engine “sounds-1” — assets/dictd is outdated."
+      : null);
 
   const remember = useCallback((word: string) => {
     void pushHistory(word).then(setHistory);
@@ -225,7 +243,7 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
         <List.EmptyView
           icon={Icon.Warning}
           title="Stale dictionary helper"
-          description="Rebuild assets/dictd on macOS (swiftc -O -o assets/dictd helper/dictd.swift), then npm run build and reinstall the extension."
+          description={`${staleReason ?? "assets/dictd is outdated."}\n\nOn macOS run:\nswiftc -O -o assets/dictd helper/dictd.swift && npm run build\nThen reinstall the build/ folder in Tinycast.`}
         />
       ) : showingHistory ? (
         <List.Section title="Recent" subtitle={`${history.length}`}>
