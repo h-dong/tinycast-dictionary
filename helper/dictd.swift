@@ -67,49 +67,31 @@ struct ActiveDict {
     let shortName: String
 }
 
-/// Pull dictionary refs out of either a CFArray or CFSet (API varies by OS).
+/// DictionaryServices returns a CFSet on modern macOS (crash if treated as CFArray).
+/// Always bridge through NSSet/NSArray — never call CFArrayGetValueAtIndex here.
 func dictionaryRefs(from collection: CFTypeRef) -> [DictRef] {
-    let typeID = CFGetTypeID(collection)
-    var refs: [DictRef] = []
+    let obj = unsafeBitCast(collection, to: AnyObject.self)
 
-    if typeID == CFArrayGetTypeID() {
-        let array = unsafeBitCast(collection, to: CFArray.self)
-        let count = CFArrayGetCount(array)
-        refs.reserveCapacity(count)
-        for i in 0..<count {
-            guard let ptr = CFArrayGetValueAtIndex(array, i) else { continue }
-            refs.append(DictRef(ptr))
+    if let set = obj as? NSSet {
+        return set.allObjects.map { item in
+            DictRef(Unmanaged.passUnretained(item as AnyObject).toOpaque())
         }
-        return refs
+    }
+    if let arr = obj as? NSArray {
+        return arr.map { item in
+            DictRef(Unmanaged.passUnretained(item as AnyObject).toOpaque())
+        }
     }
 
-    if typeID == CFSetGetTypeID() {
+    // Non-ObjC CFSet fallback (no array indexing).
+    if CFGetTypeID(collection) == CFSetGetTypeID() {
         let set = unsafeBitCast(collection, to: CFSet.self)
         let count = CFSetGetCount(set)
         var values = [UnsafeRawPointer?](repeating: nil, count: count)
         CFSetGetValues(set, &values)
-        refs.reserveCapacity(count)
-        for ptr in values {
-            guard let ptr else { continue }
-            refs.append(DictRef(ptr))
-        }
-        return refs
+        return values.compactMap { ptr in ptr.map { DictRef($0) } }
     }
-
-    // Last resort: NSSet / NSArray bridge.
-    if let set = collection as? NSSet {
-        for item in set {
-            refs.append(DictRef(Unmanaged.passUnretained(item as AnyObject).toOpaque()))
-        }
-        return refs
-    }
-    if let array = collection as? NSArray {
-        for item in array {
-            refs.append(DictRef(Unmanaged.passUnretained(item as AnyObject).toOpaque()))
-        }
-        return refs
-    }
-    return refs
+    return []
 }
 
 func activeDict(from ref: DictRef) -> ActiveDict? {
@@ -119,26 +101,25 @@ func activeDict(from ref: DictRef) -> ActiveDict? {
     return ActiveDict(ref: ref, name: name, shortName: short)
 }
 
-func availableDictionaries() -> [ActiveDict] {
+func collectDictionaries(using getter: () -> Unmanaged<CFTypeRef>?, retained: Bool) -> [ActiveDict] {
+    guard let unmanaged = getter() else { return [] }
+    let collection = retained ? unmanaged.takeRetainedValue() : unmanaged.takeUnretainedValue()
     var seen = Set<String>()
     var out: [ActiveDict] = []
-
-    func append(from getter: () -> Unmanaged<CFTypeRef>?) {
-        guard let unmanaged = getter() else { return }
-        let collection = unmanaged.takeRetainedValue()
-        for ref in dictionaryRefs(from: collection) {
-            guard let dict = activeDict(from: ref), !seen.contains(dict.name) else { continue }
-            seen.insert(dict.name)
-            out.append(dict)
-        }
+    for ref in dictionaryRefs(from: collection) {
+        guard let dict = activeDict(from: ref), !seen.contains(dict.name) else { continue }
+        seen.insert(dict.name)
+        out.append(dict)
     }
+    return out
+}
 
-    // Prefer enabled dictionaries; fall back to everything installed.
-    append(from: DCSGetActiveDictionaries)
+func availableDictionaries() -> [ActiveDict] {
+    // DCSCopyAvailableDictionaries returns a CFSet on modern macOS — handle that first.
+    var out = collectDictionaries(using: DCSCopyAvailableDictionaries, retained: true)
     if out.isEmpty {
-        append(from: DCSCopyAvailableDictionaries)
+        out = collectDictionaries(using: DCSGetActiveDictionaries, retained: false)
     }
-
     out.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     return out
 }
@@ -563,14 +544,21 @@ let cmd = parsed.cmd
 let text = parsed.text
 let activeDict = resolveDictionary(named: parsed.dictionary)
 
+if cmd == "version" {
+    print("sounds-1")
+    exit(0)
+}
+
 if cmd == "dictionaries" {
+    // Unique marker so `strings assets/dictd | grep dictset-fix` proves this build.
+    let _ = "dictset-fix"
     emit(availableDictionaries().map { DictInfo(name: $0.name, shortName: $0.shortName) })
     exit(0)
 }
 
 guard !cmd.isEmpty else {
     FileHandle.standardError.write(
-        "usage: dictd dictionaries|lookup|define [--dictionary <name>] <text>\n".data(using: .utf8)!
+        "usage: dictd version|dictionaries|lookup|define [--dictionary <name>] <text>\n".data(using: .utf8)!
     )
     exit(2)
 }
