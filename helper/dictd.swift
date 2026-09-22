@@ -93,7 +93,7 @@ func resolveDictionary(named wanted: String?) -> ActiveDict? {
 func define(_ word: String, dict: ActiveDict? = nil) -> String? {
     let ns = word as NSString
     let range = CFRangeMake(0, ns.length)
-    let cfDict: DCSDictionaryRef? = dict.map { unsafeBitCast($0.ref, to: DCSDictionaryRef.self) }
+    let cfDict: DCSDictionary? = dict.map { unsafeBitCast($0.ref, to: DCSDictionary.self) }
     guard let def = DCSCopyTextDefinition(cfDict, ns as CFString, range) else { return nil }
     return def.takeRetainedValue() as String
 }
@@ -197,7 +197,7 @@ func metaphone(_ input: String) -> String {
     if s.hasPrefix("X") { s = "S" + s.dropFirst() }
     if s.hasPrefix("WH") { s = "W" + s.dropFirst(2) }
 
-    var chars = Array(s)
+    let chars = Array(s)
     var out = ""
     var i = 0
     let maxLen = 6
@@ -334,7 +334,7 @@ func phoneticVariants(_ word: String) -> [String] {
         }
     }
     let chars = Array(lower)
-    for i in 0..<(chars.count - 1) where chars[i] == chars[i + 1], chars[i].isLetter {
+    for i in 0..<(chars.count - 1) where chars[i] == chars[i + 1] && chars[i].isLetter {
         var c = chars
         c.remove(at: i)
         out.insert(String(c))
