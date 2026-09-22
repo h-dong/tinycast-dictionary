@@ -66,22 +66,24 @@ Exact titles vary by macOS version and which packs you enabled under
 
 ## Build
 
-Requires macOS (for `swiftc` + Dictionary Services).
+Requires **macOS** (Dictionary Services + `swiftc`). Linux can edit sources but cannot produce `assets/dictd`.
 
 ```sh
 npm install --registry https://registry.npmjs.org
 npm run build
 ```
 
-`npm run build` compiles `helper/dictd.swift` → `assets/dictd`, then runs `ray build`.
-To compile the helper alone:
+`npm run build` runs `swiftc` → `assets/dictd`, then `ray build -e dist -o build`
+(the `ray` binary comes from `node_modules` via the npm script).
+
+Helper only:
 
 ```sh
 npm run build:helper
 # or: swiftc -O -o assets/dictd helper/dictd.swift
 ```
 
-Sanity check:
+Sanity check **before** installing:
 
 ```sh
 ./assets/dictd version          # → sounds-1
@@ -91,5 +93,12 @@ Sanity check:
 
 ## Install in Tinycast
 
-Settings → Extensions → enable extensions → Install → **Add from folder** → pick `build/`.
-Re-run the install after each rebuild so Tinycast picks up the new `assets/dictd`.
+1. Build on this Mac (`npm run build`) so `build/` contains a fresh `assets/dictd`.
+2. Tinycast → **Settings → Extensions** → enable extensions if needed → **Install** →
+   **Add from folder** → choose the repo’s `build/` directory.
+3. After every rebuild, install again from `build/` (Tinycast copies the folder; it will not
+   pick up a new `assets/dictd` until you re-add it).
+
+Installed copy lives under something like:
+
+`~/Library/Application Support/com.tinycast.app/extensions/dictionary/`
