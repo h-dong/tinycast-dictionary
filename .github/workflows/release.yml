@@ -38,21 +38,23 @@ jobs:
         run: npm run build
 
       - name: Pack release zip
+        env:
+          ZIP_NAME: tinycast-dictionary-${{ github.ref_name }}.zip
         run: |
           staging="tinycast-dictionary"
-          rm -rf "$staging" tinycast-dictionary.zip
+          rm -rf "$staging" "$ZIP_NAME"
           mkdir "$staging"
           cp -R build/. "$staging/"
           # Drop source maps if ray emits any — Tinycast ignores them anyway.
           find "$staging" -name '*.js.map' -delete
-          zip -r tinycast-dictionary.zip "$staging"
-          ls -lh tinycast-dictionary.zip
-          unzip -l tinycast-dictionary.zip
+          zip -r "$ZIP_NAME" "$staging"
+          ls -lh "$ZIP_NAME"
+          unzip -l "$ZIP_NAME"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: tinycast-dictionary-zip
-          path: tinycast-dictionary.zip
+          path: tinycast-dictionary-${{ github.ref_name }}.zip
           if-no-files-found: error
 
   release:
@@ -68,5 +70,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
-          files: tinycast-dictionary.zip
+          files: tinycast-dictionary-${{ github.ref_name }}.zip
           generate_release_notes: true

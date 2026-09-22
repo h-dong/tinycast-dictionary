@@ -19,7 +19,7 @@ Offline stand-in for Raycast's built-in **Define Word**. Uses the macOS system d
 
 ## Install in Tinycast
 
-1. Download `tinycast-dictionary.zip` from the
+1. Download `tinycast-dictionary-vX.Y.Z.zip` from the
    [latest release](https://github.com/h-dong/tinycast-dictionary/releases/latest).
 2. Unzip it.
 3. Settings → Extensions → enable extensions → Install → **Add from folder** → pick the
