@@ -101,7 +101,7 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
       {error ? (
         <List.EmptyView icon={Icon.Warning} title="Dictionary helper failed" description={error} />
       ) : !query.trim() ? (
-        <List.EmptyView icon={Icon.Book} title="Dictionary" description="Type a word. Misspellings are corrected as you go." />
+        <List.EmptyView icon={Icon.Book} title="Dictionary" description="Type a word. Close typos are suggested as you go." />
       ) : results.length === 0 && !isLoading ? (
         <List.EmptyView icon={Icon.QuestionMark} title="No matches" description={`Nothing in the dictionary resembles “${query.trim()}”.`} />
       ) : (
