@@ -22,7 +22,7 @@ const DICT_PREF_KEY = "define-dictionary";
 
 type DictInfo = { name: string; shortName: string };
 type Entry = { word: string; definition: string | null; html?: string | null; source?: string | null };
-type Lookup = { query: string; correct: boolean; results: Entry[] };
+type Lookup = { query: string; correct: boolean; results: Entry[]; engine?: string };
 
 let helperReady = false;
 function ensureHelper() {
@@ -196,6 +196,7 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
   const results = data?.results ?? [];
   const misspelled = data ? !data.correct : false;
   const showingHistory = !query.trim() && history.length > 0;
+  const staleHelper = Boolean(data && data.engine !== "sounds-1");
 
   const remember = useCallback((word: string) => {
     void pushHistory(word).then(setHistory);
@@ -220,6 +221,12 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
     >
       {error ? (
         <List.EmptyView icon={Icon.Warning} title="Dictionary helper failed" description={error} />
+      ) : staleHelper ? (
+        <List.EmptyView
+          icon={Icon.Warning}
+          title="Stale dictionary helper"
+          description="Rebuild assets/dictd on macOS (swiftc -O -o assets/dictd helper/dictd.swift), then npm run build and reinstall the extension."
+        />
       ) : showingHistory ? (
         <List.Section title="Recent" subtitle={`${history.length}`}>
           {history.map((word) => (

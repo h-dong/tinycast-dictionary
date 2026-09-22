@@ -46,7 +46,13 @@ struct Entry: Codable {
     let html: String?
     let source: String?
 }
-struct Lookup: Codable { let query: String; let correct: Bool; let results: [Entry] }
+struct Lookup: Codable {
+    let query: String
+    let correct: Bool
+    let results: [Entry]
+    /// Bumped when search behaviour changes; UI can detect a stale assets/dictd binary.
+    let engine: String
+}
 
 // MARK: - Dictionary resolution
 
@@ -518,7 +524,7 @@ if cmd != "lookup" {
     exit(2)
 }
 
-guard !text.isEmpty else { emit(Lookup(query: text, correct: true, results: [])); exit(0) }
+guard !text.isEmpty else { emit(Lookup(query: text, correct: true, results: [], engine: "sounds-1")); exit(0) }
 
 let checker = NSSpellChecker.shared
 let ns = text as NSString
@@ -603,10 +609,16 @@ if !isCorrect {
         add(g, distance: distance(to: g))
     }
 }
+// Prefix completions are noisy ("fone" → fon/font/fond…). Keep only close ones so
+// sound-alikes like "phone" are not crowded out of the top 12.
 for c in checker.completions(forPartialWordRange: fullRange, in: text, language: lang, inSpellDocumentWithTag: 0) ?? [] {
-    add(c, distance: distance(to: c))
+    let d = distance(to: c)
+    if d <= 2 || soundsLike(queryLower, c) {
+        add(c, distance: d)
+    }
 }
 
+// Phonetic spelling probes ("fone" → "phone", "nite" → "night"). Always run.
 mergeVariants(phoneticVariants(text))
 
 // System word-list pass for sound-alikes / wrong-place letters the probes miss
@@ -626,17 +638,20 @@ if !hasExactEarly {
 
 let hasExact = candidates.contains { $0.distance == 0 }
 let hasClose = candidates.contains { $0.distance <= 1 }
-let shouldProbe = !hasClose && text.count >= 4 && text.count <= 24
+let hasSound = candidates.contains { $0.soundsLike && $0.distance <= 2 }
+// Still probe edits when we only have weak prefix hits and no sound-alike yet.
+let shouldProbe = !hasSound && !hasClose && text.count >= 4 && text.count <= 24
 if shouldProbe {
     mergeVariants(distance1Variants(text))
 }
 
+// Sound-alikes first (fone→phone), then edit distance, then alpha.
 candidates.sort {
-    if $0.distance != $1.distance { return $0.distance < $1.distance }
     if $0.soundsLike != $1.soundsLike { return $0.soundsLike && !$1.soundsLike }
+    if $0.distance != $1.distance { return $0.distance < $1.distance }
     return $0.word.lowercased() < $1.word.lowercased()
 }
 
 let limited = Array(candidates.prefix(12))
 let results = limited.map { richEntry(for: $0.word, dict: activeDict) }
-emit(Lookup(query: text, correct: hasExact, results: results))
+emit(Lookup(query: text, correct: hasExact, results: results, engine: "sounds-1"))
