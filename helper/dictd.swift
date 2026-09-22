@@ -11,8 +11,13 @@ import CoreServices
 
 typealias DictRef = OpaquePointer
 
+/// Returns a CFSet of DCSDictionary refs on modern macOS (not a CFArray).
 @_silgen_name("DCSCopyAvailableDictionaries")
-func DCSCopyAvailableDictionaries() -> Unmanaged<CFArray>?
+func DCSCopyAvailableDictionaries() -> Unmanaged<CFTypeRef>?
+
+/// Active (enabled) dictionaries — CFArray when available.
+@_silgen_name("DCSGetActiveDictionaries")
+func DCSGetActiveDictionaries() -> Unmanaged<CFTypeRef>?
 
 @_silgen_name("DCSDictionaryGetName")
 func DCSDictionaryGetName(_ dictionary: DictRef) -> Unmanaged<CFString>?
@@ -62,19 +67,78 @@ struct ActiveDict {
     let shortName: String
 }
 
-func availableDictionaries() -> [ActiveDict] {
-    guard let unmanaged = DCSCopyAvailableDictionaries() else { return [] }
-    let cfArray = unmanaged.takeRetainedValue()
-    let count = CFArrayGetCount(cfArray)
-    var out: [ActiveDict] = []
-    out.reserveCapacity(count)
-    for i in 0..<count {
-        guard let ptr = CFArrayGetValueAtIndex(cfArray, i) else { continue }
-        let ref = DictRef(ptr)
-        let name = DCSDictionaryGetName(ref)?.takeUnretainedValue() as String? ?? "Dictionary"
-        let short = DCSDictionaryGetShortName(ref)?.takeUnretainedValue() as String? ?? name
-        out.append(ActiveDict(ref: ref, name: name, shortName: short))
+/// Pull dictionary refs out of either a CFArray or CFSet (API varies by OS).
+func dictionaryRefs(from collection: CFTypeRef) -> [DictRef] {
+    let typeID = CFGetTypeID(collection)
+    var refs: [DictRef] = []
+
+    if typeID == CFArrayGetTypeID() {
+        let array = unsafeBitCast(collection, to: CFArray.self)
+        let count = CFArrayGetCount(array)
+        refs.reserveCapacity(count)
+        for i in 0..<count {
+            guard let ptr = CFArrayGetValueAtIndex(array, i) else { continue }
+            refs.append(DictRef(ptr))
+        }
+        return refs
     }
+
+    if typeID == CFSetGetTypeID() {
+        let set = unsafeBitCast(collection, to: CFSet.self)
+        let count = CFSetGetCount(set)
+        var values = [UnsafeRawPointer?](repeating: nil, count: count)
+        CFSetGetValues(set, &values)
+        refs.reserveCapacity(count)
+        for ptr in values {
+            guard let ptr else { continue }
+            refs.append(DictRef(ptr))
+        }
+        return refs
+    }
+
+    // Last resort: NSSet / NSArray bridge.
+    if let set = collection as? NSSet {
+        for item in set {
+            refs.append(DictRef(Unmanaged.passUnretained(item as AnyObject).toOpaque()))
+        }
+        return refs
+    }
+    if let array = collection as? NSArray {
+        for item in array {
+            refs.append(DictRef(Unmanaged.passUnretained(item as AnyObject).toOpaque()))
+        }
+        return refs
+    }
+    return refs
+}
+
+func activeDict(from ref: DictRef) -> ActiveDict? {
+    let name = DCSDictionaryGetName(ref)?.takeUnretainedValue() as String? ?? ""
+    guard !name.isEmpty else { return nil }
+    let short = DCSDictionaryGetShortName(ref)?.takeUnretainedValue() as String? ?? name
+    return ActiveDict(ref: ref, name: name, shortName: short)
+}
+
+func availableDictionaries() -> [ActiveDict] {
+    var seen = Set<String>()
+    var out: [ActiveDict] = []
+
+    func append(from getter: () -> Unmanaged<CFTypeRef>?) {
+        guard let unmanaged = getter() else { return }
+        let collection = unmanaged.takeRetainedValue()
+        for ref in dictionaryRefs(from: collection) {
+            guard let dict = activeDict(from: ref), !seen.contains(dict.name) else { continue }
+            seen.insert(dict.name)
+            out.append(dict)
+        }
+    }
+
+    // Prefer enabled dictionaries; fall back to everything installed.
+    append(from: DCSGetActiveDictionaries)
+    if out.isEmpty {
+        append(from: DCSCopyAvailableDictionaries)
+    }
+
     out.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     return out
 }
