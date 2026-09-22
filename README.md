@@ -17,6 +17,16 @@ Offline stand-in for Raycast's built-in **Define Word**. Uses the macOS system d
 - `src/define.tsx` — Define Word command.
 - `build/` — output of `ray build -e dist -o build`. This is the folder to give Tinycast.
 
+## Install in Tinycast
+
+1. Download `tinycast-dictionary.zip` from the
+   [latest release](https://github.com/h-dong/tinycast-dictionary/releases/latest).
+2. Unzip it.
+3. Settings → Extensions → enable extensions → Install → **Add from folder** → pick the
+   unzipped `tinycast-dictionary/` folder.
+
+Re-install from a newer release zip when you update.
+
 ## Build
 
 ```sh
@@ -25,7 +35,13 @@ npm install --registry https://registry.npmjs.org
 npm run build
 ```
 
-## Install in Tinycast
+Then Install → **Add from folder** → pick `build/`.
 
-Settings → Extensions → enable extensions → Install → **Add from folder** → pick `build/`.
-Re-run the install after each rebuild.
+## Release
+
+Push a version tag to publish a prebuilt zip via GitHub Actions:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```

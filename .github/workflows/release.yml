@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build dictd helper
+        run: |
+          swiftc -O -target arm64-apple-macosx13.0 -o dictd-arm64 helper/dictd.swift
+          swiftc -O -target x86_64-apple-macosx13.0 -o dictd-x86_64 helper/dictd.swift
+          lipo -create -output assets/dictd dictd-arm64 dictd-x86_64
+          rm dictd-arm64 dictd-x86_64
+          chmod +x assets/dictd
+          file assets/dictd
+
+      - name: Install dependencies
+        run: npm ci --registry https://registry.npmjs.org
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Pack release zip
+        run: |
+          staging="tinycast-dictionary"
+          rm -rf "$staging" tinycast-dictionary.zip
+          mkdir "$staging"
+          cp -R build/. "$staging/"
+          # Drop source maps if ray emits any — Tinycast ignores them anyway.
+          find "$staging" -name '*.js.map' -delete
+          zip -r tinycast-dictionary.zip "$staging"
+          ls -lh tinycast-dictionary.zip
+          unzip -l tinycast-dictionary.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tinycast-dictionary.zip
+          generate_release_notes: true
