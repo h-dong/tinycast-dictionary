@@ -6,17 +6,15 @@ Offline stand-in for Raycast's built-in **Define Word**. Uses the macOS system d
 ## Commands
 
 - **Define Word** (view): type a word, get definitions in a detail pane. Misspellings show a
-  "Did you mean" list built from spellchecker guesses and completions. Actions: Paste Word,
-  Copy Word, Copy Definition (⌘⇧C), Open in Dictionary.app (⌘O). Accepts an optional argument.
-- **Correct Spelling** (no-view): fixes every misspelled word in the selected text and pastes
-  the result over the selection. Preserves case (Teh → The, DEFINATELY → DEFINITELY). With no
-  selection it corrects the clipboard instead and leaves the result on the clipboard.
+  "Did you mean" list built from spellchecker guesses and completions. Actions: Copy Word
+  (default), Paste Word, Copy Definition (⌘⇧C), Open in Dictionary.app (⌘O). Accepts an optional
+  argument.
 
 ## Layout
 
-- `helper/dictd.swift` — Swift CLI. `dictd lookup <text>`, `dictd define <word>`, `dictd correct <text>`, all print JSON.
+- `helper/dictd.swift` — Swift CLI. `dictd lookup <text>`, `dictd define <word>`, all print JSON.
 - `assets/dictd` — compiled helper (shipped inside the extension; `assets/` is copied by Tinycast).
-- `src/define.tsx`, `src/correct.tsx` — commands.
+- `src/define.tsx` — Define Word command.
 - `build/` — output of `ray build -e dist -o build`. This is the folder to give Tinycast.
 
 ## Build

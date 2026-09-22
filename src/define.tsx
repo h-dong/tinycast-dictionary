@@ -113,8 +113,8 @@ export default function Command(props: LaunchProps<{ arguments: { word?: string 
               actions={
                 <ActionPanel>
                   <ActionPanel.Section>
-                    <Action.Paste title="Paste Word" content={entry.word} />
                     <Action.CopyToClipboard title="Copy Word" content={entry.word} />
+                    <Action.Paste title="Paste Word" content={entry.word} />
                     {entry.definition ? (
                       <Action.CopyToClipboard
                         title="Copy Definition"
