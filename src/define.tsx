@@ -34,7 +34,11 @@ function toMarkdown(entry: Entry): string {
   if (!entry.definition) return `# ${entry.word}\n\n_No definition in the macOS dictionary._`;
   let body = entry.definition.trim();
   // Drop the leading headword so it isn't repeated under the heading.
-  if (body.toLowerCase().startsWith(entry.word.toLowerCase())) body = body.slice(entry.word.length).trim();
+  // Don't strip a prefix of a longer headword ("uninstal" vs "uninstall" → leftover "l").
+  if (body.toLowerCase().startsWith(entry.word.toLowerCase())) {
+    const rest = body.slice(entry.word.length);
+    if (!/^[A-Za-z]/.test(rest)) body = rest.trim();
+  }
   body = body
     .replace(/\s\|\s([^|]+)\s\|\s/, " _/$1/_\n\n") // pronunciation
     .replace(/\s(\d+)\s(?=[A-Za-z(\[])/g, "\n\n**$1** ") // numbered senses
