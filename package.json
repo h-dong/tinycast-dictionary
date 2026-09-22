@@ -2,7 +2,7 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "dictionary",
   "title": "Dictionary",
-  "description": "Offline definitions, spelling suggestions and one-shot spelling correction from the built-in macOS dictionary and spellchecker. A stand-in for Raycast's Define Word.",
+  "description": "Offline definitions and spelling suggestions from the built-in macOS dictionary and spellchecker. A stand-in for Raycast's Define Word.",
   "icon": "icon.png",
   "author": "haodong",
   "license": "MIT",
@@ -17,13 +17,6 @@
       "arguments": [
         { "name": "word", "placeholder": "Word", "type": "text", "required": false }
       ]
-    },
-    {
-      "name": "correct",
-      "title": "Correct Spelling",
-      "subtitle": "Dictionary",
-      "description": "Fix misspelled words in the selected text and replace it in place. Falls back to the clipboard when nothing is selected.",
-      "mode": "no-view"
     }
   ],
   "dependencies": {
